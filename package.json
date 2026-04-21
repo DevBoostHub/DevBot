@@ -16,20 +16,20 @@
     "@constatic/base": "latest",
     "@magicyan/discord": "1.7.3",
     "chalk": "5.6.2",
+    "cors": "2.8.5",
     "discord.js": "14.26.2",
-    "zod": "4.1.11",
-    "mongoose": "8.3.1",
+    "express": "^4.22.1",
     "http-status-codes": "2.3.0",
-    "express": "4.19.2",
-    "cors": "2.8.5"
+    "mongoose": "^8.23.0",
+    "zod": "4.1.11"
   },
   "devDependencies": {
-    "@types/node": "22.16.4",
-    "tsx": "4.19.3",
-    "typescript": "5.9.3",
     "@types/cors": "2.8.17",
     "@types/express": "4.17.21",
-    "tsup": "^8.3.5"
+    "@types/node": "22.16.4",
+    "tsup": "^8.3.5",
+    "tsx": "4.19.3",
+    "typescript": "5.9.3"
   },
   "imports": {
     "#env": [
