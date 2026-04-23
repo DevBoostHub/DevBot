@@ -1,5 +1,5 @@
 import { createEvent } from "#base";
-import { EmbedBuilder, codeBlock } from "discord.js";
+import { AttachmentBuilder, EmbedBuilder, codeBlock } from "discord.js";
 import { getLogsChannel } from "./utils.js";
 
 createEvent({
@@ -14,6 +14,7 @@ createEvent({
 
         const author = message.author;
         const channel = message.channel;
+        const attachments = [...message.attachments.values()];
 
         const embed = new EmbedBuilder()
             .setColor(0xed4245)
@@ -40,19 +41,41 @@ createEvent({
             })
             .setTimestamp();
 
-        // Anexos (imagens, documentos, etc.)
-        const attachments = [...message.attachments.values()];
-        if (attachments.length > 0) {
-            const list = attachments
-                .map(a => `• [${a.name}](${a.url}) \`(${a.contentType ?? "desconhecido"})\``)
-                .join("\n");
+        // Tenta baixar e reenviar os arquivos como anexos reais
+        const files: AttachmentBuilder[] = [];
+
+        for (const attachment of attachments) {
+            try {
+                const response = await fetch(attachment.url);
+                if (!response.ok) continue;
+
+                const buffer = Buffer.from(await response.arrayBuffer());
+                files.push(new AttachmentBuilder(buffer, { name: attachment.name ?? "arquivo" }));
+            } catch {
+                // Se não conseguir baixar, apenas lista o nome
+            }
+        }
+
+        // Se tiver arquivos que não conseguimos baixar, lista no embed
+        const failedAttachments = attachments.filter(
+            (_, i) => !files[i]
+        );
+        if (failedAttachments.length > 0) {
             embed.addFields({
-                name: "📎 Anexos excluídos",
-                value: list.slice(0, 1024),
+                name: "📎 Anexos (não recuperados)",
+                value: failedAttachments.map(a => `• ${a.name ?? "arquivo"} \`(${a.contentType ?? "?"})\``).join("\n"),
                 inline: false,
             });
         }
 
-        await logsChannel.send({ embeds: [embed] });
+        if (files.length > 0) {
+            embed.addFields({
+                name: "📎 Mídias recuperadas",
+                value: `${files.length} arquivo(s) anexado(s) abaixo`,
+                inline: false,
+            });
+        }
+
+        await logsChannel.send({ embeds: [embed], files });
     },
 });
