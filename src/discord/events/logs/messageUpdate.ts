@@ -1,5 +1,5 @@
 import { createEvent } from "#base";
-import { EmbedBuilder, codeBlock } from "discord.js";
+import { AttachmentBuilder, EmbedBuilder, codeBlock } from "discord.js";
 import { getLogsChannel } from "./utils.js";
 
 createEvent({
@@ -15,6 +15,11 @@ createEvent({
 
         const author = newMessage.author;
         const channel = newMessage.channel;
+
+        // Anexos que existiam na mensagem antiga mas foram removidos na edição
+        const removedAttachments = [...oldMessage.attachments.values()].filter(
+            a => !newMessage.attachments.has(a.id)
+        );
 
         const embed = new EmbedBuilder()
             .setColor(0xfee75c)
@@ -32,14 +37,14 @@ createEvent({
                     name: "📝 Mensagem antiga",
                     value: oldMessage.content
                         ? codeBlock(oldMessage.content.slice(0, 1000))
-                        : "*Conteúdo indisponível*",
+                        : "*Sem texto*",
                     inline: false,
                 },
                 {
                     name: "✏️ Nova mensagem",
                     value: newMessage.content
                         ? codeBlock(newMessage.content.slice(0, 1000))
-                        : "*Conteúdo indisponível*",
+                        : "*Sem texto*",
                     inline: false,
                 },
                 {
@@ -53,6 +58,29 @@ createEvent({
             })
             .setTimestamp();
 
-        await logsChannel.send({ embeds: [embed] });
+        // Tenta recuperar anexos removidos na edição
+        const files: AttachmentBuilder[] = [];
+
+        for (const attachment of removedAttachments) {
+            try {
+                const response = await fetch(attachment.url);
+                if (!response.ok) continue;
+
+                const buffer = Buffer.from(await response.arrayBuffer());
+                files.push(new AttachmentBuilder(buffer, { name: attachment.name ?? "arquivo" }));
+            } catch {
+                // ignora se não conseguir baixar
+            }
+        }
+
+        if (files.length > 0) {
+            embed.addFields({
+                name: "📎 Mídias removidas na edição",
+                value: `${files.length} arquivo(s) recuperado(s) abaixo`,
+                inline: false,
+            });
+        }
+
+        await logsChannel.send({ embeds: [embed], files });
     },
 });
