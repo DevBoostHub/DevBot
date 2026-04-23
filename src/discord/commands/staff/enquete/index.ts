@@ -8,51 +8,40 @@ import {
 
 createCommand({
     name: "enquete",
-    description: "📊 Cria uma enquete no canal atual (somente administradores)",
+    description: "📊 Cria uma enquete no canal atual",
     type: ApplicationCommandType.ChatInput,
     defaultMemberPermissions: [PermissionFlagsBits.Administrator],
     dmPermission: false,
     async run(interaction) {
-        const { member } = interaction;
-
-        // Verificação dupla em runtime
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            await interaction.reply({
-                flags: ["Ephemeral"],
-                content: "🚫 Apenas **administradores** podem usar este comando.",
-            });
-            return;
-        }
-
-        const selectMenu = new StringSelectMenuBuilder({
-            customId: "/staff/enquete/tipo",
+        const select = new StringSelectMenuBuilder({
+            customId: "poll/tipo",
             placeholder: "Selecione o tipo de enquete...",
             options: [
                 {
-                    value: "alternativa",
-                    label: "Alternativa — uma resposta",
-                    description: "Os membros escolhem apenas uma opção",
-                    emoji: { name: "🔘" },
+                    value:       "single",
+                    label:       "Uma resposta",
+                    description: "Cada membro escolhe apenas uma opção",
+                    emoji:       { name: "🔘" },
                 },
                 {
-                    value: "checkbox",
-                    label: "Múltipla escolha — várias respostas",
-                    description: "Os membros podem marcar mais de uma opção",
-                    emoji: { name: "☑️" },
+                    value:       "multi",
+                    label:       "Múltipla escolha",
+                    description: "Cada membro pode marcar mais de uma opção",
+                    emoji:       { name: "☑️" },
                 },
                 {
-                    value: "input",
-                    label: "Resposta por extenso",
-                    description: "Os membros digitam uma resposta livre",
-                    emoji: { name: "✏️" },
+                    value:       "text",
+                    label:       "Resposta por extenso",
+                    description: "Cada membro digita uma resposta livre",
+                    emoji:       { name: "✏️" },
                 },
             ],
         });
 
         await interaction.reply({
-            flags: ["Ephemeral"],
-            content: "📊 **Criar Enquete** — Selecione o tipo de enquete:",
-            components: [createRow(selectMenu)],
+            flags:      ["Ephemeral"],
+            content:    "📊 **Nova Enquete** — Selecione o tipo:",
+            components: [createRow(select)],
         });
     },
 });

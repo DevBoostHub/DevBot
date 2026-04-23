@@ -1,7 +1,7 @@
-export * from "./delete-responses.js";
-export * from "./input-modal.js";
-export * from "./input.js";
+export * from "./close.js";
 export * from "./modal.js";
+export * from "./reply.js";
 export * from "./tipo.js";
-export * from "./votar.js";
+export * from "./vote.js";
+export * from "./voters.js";
 

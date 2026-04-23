@@ -8,231 +8,158 @@ import {
     EmbedBuilder,
     PermissionFlagsBits,
 } from "discord.js";
-import { buildBar, enqueteStore, gerarId, type TipoEnquete } from "./store.js";
+import {
+    generateId,
+    pollStore,
+    type PollType
+} from "./store.js";
 
 createResponder({
-    customId: "/staff/enquete/modal/:tipo",
+    customId: "poll/modal/:type",
     types: [ResponderType.Modal, ResponderType.ModalComponent],
     cache: "cached",
-    parse: params => ({ tipo: params.tipo as TipoEnquete }),
-    async run(interaction, { tipo }) {
-        try {
-            console.log("📊 Responder modal acionado com tipo:", tipo);
-            const { fields, channel, user } = interaction;
+    parse: params => ({ type: params.type as PollType }),
+    async run(interaction, { type }) {
+        const { fields, guild, channel, user } = interaction;
 
-            // Validar tipo de enquete
-            const tiposValidos: TipoEnquete[] = ["alternativa", "checkbox", "input"];
-            if (!tipo || !tiposValidos.includes(tipo)) {
-                console.error("❌ Tipo inválido:", tipo);
-                await interaction.reply({
-                    flags: ["Ephemeral"],
-                    content: `❌ Tipo de enquete inválido: ${tipo}. Tipos válidos: ${tiposValidos.join(", ")}`,
-                });
+        const question = fields.getTextInputValue("question").trim();
+
+        // ── Validar e processar opções ─────────────────────────────────────
+        const labels: string[] = [];
+        if (type !== "text") {
+            const lines = fields.getTextInputValue("options")
+                .split("\n").map(l => l.trim()).filter(Boolean);
+
+            if (lines.length < 2) {
+                await interaction.reply({ flags: ["Ephemeral"], content: "❌ Informe pelo menos **2 opções** separadas por linha." });
                 return;
             }
-
-            if (!channel || !channel.isTextBased()) {
-                await interaction.reply({
-                    flags: ["Ephemeral"],
-                    content: "❌ Este comando só funciona em canais de texto.",
-                });
+            if (lines.length > 5) {
+                await interaction.reply({ flags: ["Ephemeral"], content: "❌ O máximo de opções é **5**." });
                 return;
             }
+            labels.push(...lines);
+        }
 
-            const pergunta = fields.getTextInputValue("pergunta").trim();
+        await interaction.deferReply({ flags: ["Ephemeral"] });
 
-            if (!pergunta || pergunta.length === 0) {
-                await interaction.reply({
-                    flags: ["Ephemeral"],
-                    content: "❌ A pergunta não pode estar vazia.",
-                });
-                return;
-            }
+        const id = generateId();
 
-            if (pergunta.length > 256) {
-                await interaction.reply({
-                    flags: ["Ephemeral"],
-                    content: "❌ A pergunta não pode ter mais de 256 caracteres.",
-                });
-                return;
-            }
-
-            // ── Processar opções (apenas para alternativa / checkbox) ──────────
-            const opcoes: string[] = [];
-            if (tipo !== "input") {
-                const opcoesRaw = fields.getTextInputValue("opcoes");
-                console.log("Opções brutas:", opcoesRaw);
-                const linhas = opcoesRaw
-                    .split("\n")
-                    .map(l => l.trim())
-                    .filter(Boolean);
-
-                console.log("Opções processadas:", linhas);
-
-                if (linhas.length < 2) {
-                    await interaction.reply({
-                        flags: ["Ephemeral"],
-                        content: "❌ Informe pelo menos **2 opções** separadas por linha.",
-                    });
-                    return;
-                }
-                if (linhas.length > 5) {
-                    await interaction.reply({
-                        flags: ["Ephemeral"],
-                        content: "❌ O máximo de opções permitido é **5**.",
-                    });
-                    return;
-                }
-                opcoes.push(...linhas);
-            }
-
-        // ── Criar enquete no store ─────────────────────────────────────────
-        const id = gerarId();
-        enqueteStore.set(id, {
-            id,
-            pergunta,
-            tipo,
-            opcoes: opcoes.map(label => ({ label, votes: new Set() })),
-            respostas: [],
-            criadoPor: user.id,
-            channelId: channel.id,
+        // ── Canal privado de resultados ────────────────────────────────────
+        const resultChannel = await guild.channels.create({
+            name: `resultados-${id.toLowerCase()}`,
+            type: ChannelType.GuildText,
+            topic: `Resultados da enquete: "${question}"`,
+            permissionOverwrites: [
+                { id: guild.roles.everyone, deny:  [PermissionFlagsBits.ViewChannel] },
+                { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory] },
+            ],
         });
 
-        // ── Montar embed base ──────────────────────────────────────────────
-        const tipoLabel: Record<TipoEnquete, string> = {
-            alternativa: "🔘 Uma resposta",
-            checkbox: "☑️ Múltipla escolha",
-            input: "✏️ Resposta por extenso",
+        const typeLabel: Record<PollType, string> = {
+            single: "🔘 Uma resposta",
+            multi:  "☑️ Múltipla escolha",
+            text:   "✏️ Resposta por extenso",
+        };
+        const typeHint: Record<PollType, string> = {
+            single: "-# 🔘 Selecione uma opção",
+            multi:  "-# ☑️ Selecione uma ou mais opções",
+            text:   "-# ✏️ Clique em **Responder** para enviar sua resposta",
         };
 
-        const embed = new EmbedBuilder()
-            .setTitle(`📊 ${pergunta}`)
-            .setColor(0x5865f2)
-            .setFooter({
-                text: `Tipo: ${tipoLabel[tipo]} • ID: ${id} • Criado por ${user.displayName}`,
-                iconURL: user.displayAvatarURL(),
-            })
-            .setTimestamp();
+        const pollOptions = labels.map((label, i) => ({
+            id: String(i), label, voteCount: 0, voters: [] as string[],
+        }));
 
-        // ── Tipo "input": criar canal privado para respostas ────────────────
-        if (tipo === "input") {
-            embed.setDescription(
-                "✏️ Clique no botão abaixo para enviar sua resposta por extenso.\n\n" +
-                "📬 **0 respostas recebidas**"
+        // ── Salvar no store ────────────────────────────────────────────────
+        pollStore.set(id, {
+            id,
+            guildId:         guild.id,
+            channelId:       channel!.id,
+            messageId:       "",
+            resultChannelId: resultChannel.id,
+            createdBy:       user.id,
+            question,
+            type,
+            options:         pollOptions,
+            votes:           new Map(),
+            closed:          false,
+        });
+
+        // ── Montar mensagem pública ────────────────────────────────────────
+        let msg;
+
+        if (type === "text") {
+            const embed = new EmbedBuilder()
+                .setColor(0x313338)
+                .setTitle(question)
+                .setDescription(`${typeHint.text}\n\n📬 **0 respostas recebidas**`)
+                .setFooter({ text: `${typeLabel.text} · por ${user.displayName}`, iconURL: user.displayAvatarURL() })
+                .setTimestamp();
+
+            const replyBtn = new ButtonBuilder({
+                customId: `poll/reply/${id}`,
+                label:    "Responder",
+                style:    ButtonStyle.Primary,
+                emoji:    "✏️",
+            });
+
+            msg = await channel!.send({ embeds: [embed], components: [createRow(replyBtn)] });
+        } else {
+            const emptyBars = pollOptions
+                .map(o => `**${o.label}**\n\`${"░".repeat(18)}\` **0%** · *0 votos*`)
+                .join("\n\n");
+
+            const embed = new EmbedBuilder()
+                .setColor(0x313338)
+                .setTitle(question)
+                .setDescription(`${typeHint[type]}\n\n${emptyBars}`)
+                .setFooter({ text: `${typeLabel[type]} · 0 votos · por ${user.displayName}`, iconURL: user.displayAvatarURL() })
+                .setTimestamp();
+
+            const voteButtons = pollOptions.map(o =>
+                new ButtonBuilder({
+                    customId: `poll/vote/${id}/${o.id}`,
+                    label:    o.label,
+                    style:    ButtonStyle.Secondary,
+                })
             );
 
-            const btn = new ButtonBuilder({
-                customId: `/staff/enquete/input/${id}`,
-                label: "Responder",
-                style: ButtonStyle.Primary,
-                emoji: "✏️",
-            });
+            const rows = [];
+            for (let i = 0; i < voteButtons.length; i += 5) rows.push(createRow(...voteButtons.slice(i, i + 5)));
 
-            const deleteBtn = new ButtonBuilder({
-                customId: `/staff/enquete/delete/${id}`,
-                label: "Destruir Sala",
-                style: ButtonStyle.Danger,
-                emoji: "🗑️",
-            });
-
-            // Criar canal privado para armazenar respostas
-            const responseChannel = await channel.guild.channels.create({
-                name: `respostas-enquete-${id.toLowerCase()}`,
-                type: ChannelType.GuildText,
-                topic: `📋 Respostas da enquete: "${pergunta}" (ID: ${id})`,
-                permissionOverwrites: [
-                    {
-                        id: channel.guild.roles.everyone,
-                        deny: [PermissionFlagsBits.ViewChannel],
-                    },
-                    {
-                        id: user.id,
-                        allow: [
-                            PermissionFlagsBits.ViewChannel,
-                            PermissionFlagsBits.ReadMessageHistory,
-                        ],
-                    },
-                ],
-            });
-
-            enqueteStore.get(id)!.responseChannelId = responseChannel.id;
-
-            // Enviar embed de boas-vindas no canal de respostas (com botão de destruir)
-            await responseChannel.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle(`📋 Sala de Respostas — ${pergunta}`)
-                        .setDescription(
-                            `Todas as respostas para esta enquete serão armazenadas aqui.\n\n` +
-                            `🔒 **Apenas você consegue acessar esta sala.**`
-                        )
-                        .setColor(0x5865f2)
-                        .setFooter({ text: `ID da enquete: ${id}` })
-                        .setTimestamp(),
-                ],
-                components: [createRow(deleteBtn)],
-            });
-
-            const msg = await channel.send({
-                embeds: [embed],
-                components: [createRow(btn)],
-            });
-
-            enqueteStore.get(id)!.messageId = msg.id;
-
-            await interaction.reply({
-                flags: ["Ephemeral"],
-                content: `✅ Enquete criada com sucesso! [Ir para a enquete](${msg.url})\n🔒 Uma sala privada foi criada para armazenar as respostas.`,
-            });
-            return;
+            msg = await channel!.send({ embeds: [embed], components: rows });
         }
 
-        // ── Tipos alternativa / checkbox: botões de voto ───────────────────
-        embed.addFields(
-            opcoes.map(opcao => ({
-                name: opcao,
-                value: buildBar(0, 0),
-                inline: false,
-            }))
-        );
+        pollStore.get(id)!.messageId = msg.id;
 
-        if (tipo === "alternativa") {
-            embed.setDescription("🔘 Selecione **uma opção** clicando no botão abaixo.");
-        } else {
-            embed.setDescription("☑️ Você pode selecionar **múltiplas opções**. Clique novamente para desmarcar.");
-        }
-
-        // Botões de votação — máx. 5 por linha (ActionRow)
-        const buttons = opcoes.map((opcao, i) =>
-            new ButtonBuilder({
-                customId: `/staff/enquete/votar/${id}/${i}`,
-                label: opcao,
-                style: ButtonStyle.Secondary,
-            })
-        );
-
-        const rows = [];
-        for (let i = 0; i < buttons.length; i += 5) {
-            rows.push(createRow(...buttons.slice(i, i + 5)));
-        }
-
-        const msg = await channel.send({ embeds: [embed], components: rows });
-        enqueteStore.get(id)!.messageId = msg.id;
-
-        await interaction.reply({
-            flags: ["Ephemeral"],
-            content: `✅ Enquete criada com sucesso! [Ir para a enquete](${msg.url})`,
+        // ── Canal privado: boas-vindas + botão encerrar ────────────────────
+        const closeBtn = new ButtonBuilder({
+            customId: `poll/close/${id}`,
+            label:    "Encerrar Enquete",
+            style:    ButtonStyle.Danger,
+            emoji:    "🔒",
         });
-        } catch (err) {
-            console.error("Erro ao criar enquete:", err);
-            try {
-                await interaction.reply({
-                    flags: ["Ephemeral"],
-                    content: "❌ Ocorreu um erro ao criar a enquete. Tente novamente.",
-                });
-            } catch {
-                console.error("Erro ao responder ao usuário:", err);
-            }
-        }
+
+        await resultChannel.send({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0x313338)
+                    .setTitle("📋 Sala de Resultados")
+                    .setDescription(
+                        `**${question}**\n\n` +
+                        `Tipo: **${typeLabel[type]}**\n` +
+                        `🔒 Apenas você tem acesso a esta sala.\n\n` +
+                        `Os votos aparecerão aqui em tempo real.`
+                    )
+                    .setFooter({ text: `ID: ${id}` })
+                    .setTimestamp(),
+            ],
+            components: [createRow(closeBtn)],
+        });
+
+        await interaction.editReply(
+            `✅ Enquete criada! [Ir para a enquete](${msg.url})\n🔒 Sala privada: ${resultChannel}`
+        );
     },
 });
