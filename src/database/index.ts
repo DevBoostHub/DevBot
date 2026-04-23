@@ -3,6 +3,7 @@ import chalk from "chalk";
 import mongoose, { InferSchemaType, model } from "mongoose";
 import { guildSchema } from "./schemas/guild.js";
 import { memberSchema } from "./schemas/member.js";
+import { modlogSchema } from "./schemas/modlog.js";
 
 try {
    console.log(chalk.blue("Connecting to MongoDB..."));
@@ -17,8 +18,10 @@ try {
 
 export const db = {
    guilds: model("guild", guildSchema, "guilds"),
-   members: model("member", memberSchema, "members")
+   members: model("member", memberSchema, "members"),
+   modlogs: model("modlog", modlogSchema, "modlogs"),
 };
 
 export type GuildSchema = InferSchemaType<typeof guildSchema>;
 export type MemberSchema = InferSchemaType<typeof memberSchema>;
+export type ModlogSchema = InferSchemaType<typeof modlogSchema>;
