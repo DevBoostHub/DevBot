@@ -1,7 +1,7 @@
 import { createCommand, createResponder } from "#base";
 import { ResponderType } from "@constatic/base";
 import { createContainer, createSection, Separator } from "@magicyan/discord";
-import { ApplicationCommandType, ButtonBuilder, ButtonStyle, InteractionReplyOptions } from "discord.js";
+import { ApplicationCommandType, ButtonBuilder, ButtonStyle } from "discord.js";
 
 createCommand({
     name: "counter",
@@ -25,7 +25,7 @@ createResponder({
     },
 });
 
-function counterMenu<R>(current: number): R {
+function counterMenu(current: number) {
     const container = createContainer("Random",
         createSection(
             `## Current value: \` ${current} \``,
@@ -56,8 +56,7 @@ function counterMenu<R>(current: number): R {
         ),
     );
 
-    return ({
-        flags: ["Ephemeral", "IsComponentsV2"],
+    return {
         components: [container]
-    } satisfies InteractionReplyOptions) as R;
+    };
 }
