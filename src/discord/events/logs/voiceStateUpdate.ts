@@ -2,6 +2,9 @@ import { createEvent } from "#base";
 import { EmbedBuilder } from "discord.js";
 import { buildFooter, getLogsChannel } from "./logsChannel.js";
 
+// Debounce: ignora eventos duplicados do mesmo usuário em menos de 1s
+const recentEvents = new Map<string, string>();
+
 createEvent({
     name: "Log: voz",
     event: "voiceStateUpdate",
@@ -23,7 +26,8 @@ createEvent({
         if (!logsChannel) return;
 
         const user = member.user;
-        let embed: EmbedBuilder;
+
+      let embed: EmbedBuilder;
 
         if (joined) {
             embed = new EmbedBuilder()

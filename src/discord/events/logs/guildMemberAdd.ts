@@ -2,11 +2,18 @@ import { createEvent } from "#base";
 import { EmbedBuilder, time } from "discord.js";
 import { buildFooter, getLogsChannel } from "./logsChannel.js";
 
+// Debounce: evita log duplicado para o mesmo membro em 3s
+const recentJoins = new Set<string>();
+
 createEvent({
     name: "Log: entrada de membro",
     event: "guildMemberAdd",
     async run(member) {
         if (member.user.bot) return;
+        if (recentJoins.has(member.id)) return;
+
+        recentJoins.add(member.id);
+        setTimeout(() => recentJoins.delete(member.id), 3000);
 
         const logsChannel = await getLogsChannel(member.client);
         if (!logsChannel) return;
