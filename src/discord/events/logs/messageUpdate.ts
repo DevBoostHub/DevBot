@@ -1,86 +1,58 @@
 import { createEvent } from "#base";
-import { AttachmentBuilder, EmbedBuilder, codeBlock } from "discord.js";
-import { getLogsChannel } from "./utils.js";
+import { EmbedBuilder } from "discord.js";
+import { buildFooter, getLogsChannel } from "./logsChannel.js";
 
 createEvent({
     name: "Log: edição de mensagem",
     event: "messageUpdate",
     async run(oldMessage, newMessage) {
-        if (!newMessage.guild) return;
         if (newMessage.author?.bot) return;
+        if (!newMessage.guild) return;
+
+        // Ignora se o conteúdo não mudou (ex: embed carregando)
         if (oldMessage.content === newMessage.content) return;
 
         const logsChannel = await getLogsChannel(newMessage.client);
         if (!logsChannel) return;
 
-        const author = newMessage.author;
+        const user    = newMessage.author;
         const channel = newMessage.channel;
-
-        // Anexos que existiam na mensagem antiga mas foram removidos na edição
-        const removedAttachments = [...oldMessage.attachments.values()].filter(
-            a => !newMessage.attachments.has(a.id)
-        );
 
         const embed = new EmbedBuilder()
             .setColor(0xfee75c)
             .setAuthor({
-                name: `${author?.tag ?? "Usuário desconhecido"} editou uma mensagem`,
-                iconURL: author?.displayAvatarURL(),
+                name:    `${user.tag} editou uma mensagem`,
+                iconURL: user.displayAvatarURL(),
             })
             .addFields(
                 {
-                    name: "📌 Canal",
-                    value: `${channel} \`(ID: ${channel.id})\``,
+                    name:   "👤 Usuário",
+                    value:  `<@${user.id}> \`(ID: ${user.id})\``,
                     inline: false,
                 },
                 {
-                    name: "📝 Mensagem antiga",
-                    value: oldMessage.content
-                        ? codeBlock(oldMessage.content.slice(0, 1000))
-                        : "*Sem texto*",
+                    name:   "📝 Canal",
+                    value:  `<#${channel.id}> \`(ID: ${channel.id})\``,
                     inline: false,
                 },
                 {
-                    name: "✏️ Nova mensagem",
-                    value: newMessage.content
-                        ? codeBlock(newMessage.content.slice(0, 1000))
-                        : "*Sem texto*",
+                    name:   "📄 Mensagem Antiga",
+                    value:  oldMessage.content?.slice(0, 1024) || "*sem conteúdo*",
                     inline: false,
                 },
                 {
-                    name: "🔗 Ir para a mensagem",
-                    value: `[Clique aqui](${newMessage.url})`,
+                    name:   "✏️ Mensagem Editada",
+                    value:  newMessage.content?.slice(0, 1024) || "*sem conteúdo*",
                     inline: false,
-                }
+                },
             )
-            .setFooter({
-                text: `ID do usuário: ${author?.id ?? "?"} • ID da mensagem: ${newMessage.id}`,
-            })
+            .setFooter({ text: buildFooter(user.id, `ID da mensagem: ${newMessage.id}`) })
             .setTimestamp();
 
-        // Tenta recuperar anexos removidos na edição
-        const files: AttachmentBuilder[] = [];
-
-        for (const attachment of removedAttachments) {
-            try {
-                const response = await fetch(attachment.url);
-                if (!response.ok) continue;
-
-                const buffer = Buffer.from(await response.arrayBuffer());
-                files.push(new AttachmentBuilder(buffer, { name: attachment.name ?? "arquivo" }));
-            } catch {
-                // ignora se não conseguir baixar
-            }
+        if (newMessage.url) {
+            embed.addFields({ name: "🔗 Link", value: `[Ir para a mensagem](${newMessage.url})`, inline: false });
         }
 
-        if (files.length > 0) {
-            embed.addFields({
-                name: "📎 Mídias removidas na edição",
-                value: `${files.length} arquivo(s) recuperado(s) abaixo`,
-                inline: false,
-            });
-        }
-
-        await logsChannel.send({ embeds: [embed], files });
+        await logsChannel.send({ embeds: [embed] });
     },
 });

@@ -1,12 +1,22 @@
 import { createEvent } from "#base";
-import { cacheMessageAttachments } from "./cache.js";
+import { cacheMessageAttachments } from "./attachmentCache.js";
 
-// Escuta todas as mensagens e faz cache dos anexos em memória
 createEvent({
     name: "Log: cache de anexos",
     event: "messageCreate",
     async run(message) {
+        // Ignora bots mas não ignora mensagens parciais (author pode ser null em partials)
+        if (message.author?.bot) return;
         if (message.attachments.size === 0) return;
-        await cacheMessageAttachments(message.id, [...message.attachments.values()]);
+
+        await cacheMessageAttachments(
+            message.id,
+            message.attachments.map(a => ({
+                id:          a.id,
+                url:         a.url,
+                name:        a.name,
+                contentType: a.contentType,
+            }))
+        );
     },
 });
