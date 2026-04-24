@@ -5,7 +5,8 @@ createEvent({
     name: "Log: cache de anexos",
     event: "messageCreate",
     async run(message) {
-        if (message.author.bot) return;
+        // Ignora bots mas não ignora mensagens parciais (author pode ser null em partials)
+        if (message.author?.bot) return;
         if (message.attachments.size === 0) return;
 
         await cacheMessageAttachments(

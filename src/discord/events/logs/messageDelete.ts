@@ -7,8 +7,17 @@ createEvent({
     name: "Log: exclusão de mensagem",
     event: "messageDelete",
     async run(message) {
+        // Ignora bots
         if (message.author?.bot) return;
-        if (!message.guild) return;
+        if (!message.guildId) return;
+
+        // Recuperar anexos do cache ANTES de qualquer await
+        // (o id sempre existe mesmo em mensagens parciais)
+        const cached = getCachedAttachments(message.id);
+        deleteCachedAttachments(message.id);
+
+        // Se a mensagem é partial e não tem conteúdo nem anexos cacheados, ignora
+        if (message.partial && !message.content && cached.length === 0) return;
 
         const logsChannel = await getLogsChannel(message.client);
         if (!logsChannel) return;
@@ -44,14 +53,11 @@ createEvent({
             })
             .setTimestamp();
 
-        // Recuperar anexos do cache
-        const cached = getCachedAttachments(message.id);
-        const files  = cached.map(a => new AttachmentBuilder(a.buffer, { name: a.name }));
-        deleteCachedAttachments(message.id);
+        const files = cached.map(a => new AttachmentBuilder(a.buffer, { name: a.name }));
 
         if (cached.length > 0) {
             embed.addFields({
-                name:   "📎 Anexos recuperados",
+                name:   `📎 Anexo${cached.length > 1 ? "s" : ""} recuperado${cached.length > 1 ? "s" : ""}`,
                 value:  cached.map(a => `\`${a.name}\``).join(", "),
                 inline: false,
             });
