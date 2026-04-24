@@ -1,66 +1,58 @@
 import { createEvent } from "#base";
-import { AttachmentBuilder, EmbedBuilder, codeBlock } from "discord.js";
-import { deleteCachedAttachments, getCachedAttachments } from "./cache.js";
-import { getLogsChannel } from "./utils.js";
+import { AttachmentBuilder, EmbedBuilder } from "discord.js";
+import { deleteCachedAttachments, getCachedAttachments } from "./attachmentCache.js";
+import { buildFooter, getLogsChannel } from "./logsChannel.js";
 
 createEvent({
     name: "Log: exclusão de mensagem",
     event: "messageDelete",
     async run(message) {
-        if (!message.guild) return;
         if (message.author?.bot) return;
+        if (!message.guild) return;
 
         const logsChannel = await getLogsChannel(message.client);
         if (!logsChannel) return;
 
-        const author = message.author;
+        const user    = message.author;
         const channel = message.channel;
-
-        // Recupera anexos do cache (baixados no messageCreate)
-        const cached = getCachedAttachments(message.id);
-        deleteCachedAttachments(message.id);
-
-        const files = cached.map(
-            a => new AttachmentBuilder(a.buffer, { name: a.name })
-        );
 
         const embed = new EmbedBuilder()
             .setColor(0xed4245)
             .setAuthor({
-                name: `${author?.tag ?? "Usuário desconhecido"} excluiu uma mensagem`,
-                iconURL: author?.displayAvatarURL(),
+                name:    user ? `${user.tag} teve uma mensagem deletada` : "Mensagem deletada",
+                iconURL: user?.displayAvatarURL(),
             })
             .addFields(
                 {
-                    name: "📌 Canal",
-                    value: `${channel} \`(ID: ${channel.id})\``,
+                    name:   "👤 Usuário",
+                    value:  user ? `<@${user.id}> \`(ID: ${user.id})\`` : "*desconhecido*",
                     inline: false,
                 },
                 {
-                    name: "🗑️ Conteúdo excluído",
-                    value: message.content
-                        ? codeBlock(message.content.slice(0, 1000))
-                        : "*Sem texto*",
+                    name:   "📝 Canal",
+                    value:  `<#${channel.id}> \`(ID: ${channel.id})\``,
                     inline: false,
-                }
+                },
+                {
+                    name:   "🗑️ Conteúdo",
+                    value:  message.content?.slice(0, 1024) || "*sem conteúdo de texto*",
+                    inline: false,
+                },
             )
             .setFooter({
-                text: `ID do usuário: ${author?.id ?? "?"} • ID da mensagem: ${message.id} • ID do canal: ${channel.id}`,
+                text: buildFooter(user?.id ?? "desconhecido", `ID da mensagem: ${message.id}`),
             })
             .setTimestamp();
 
-        if (files.length > 0) {
+        // Recuperar anexos do cache
+        const cached = getCachedAttachments(message.id);
+        const files  = cached.map(a => new AttachmentBuilder(a.buffer, { name: a.name }));
+        deleteCachedAttachments(message.id);
+
+        if (cached.length > 0) {
             embed.addFields({
-                name: "📎 Mídias recuperadas",
-                value: cached.map(a => `• \`${a.name}\` (${a.contentType ?? "?"})`).join("\n"),
-                inline: false,
-            });
-        } else if (message.attachments.size > 0) {
-            embed.addFields({
-                name: "📎 Anexos (não cacheados)",
-                value: [...message.attachments.values()]
-                    .map(a => `• \`${a.name}\` (${a.contentType ?? "?"})`)
-                    .join("\n"),
+                name:   "📎 Anexos recuperados",
+                value:  cached.map(a => `\`${a.name}\``).join(", "),
                 inline: false,
             });
         }
