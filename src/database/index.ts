@@ -17,11 +17,11 @@ try {
 }
 
 export const db = {
-   guilds: model("guild", guildSchema, "guilds"),
+   guilds:  model("guild",  guildSchema,  "guilds"),
    members: model("member", memberSchema, "members"),
    modlogs: model("modlog", modlogSchema, "modlogs"),
 };
 
-export type GuildSchema = InferSchemaType<typeof guildSchema>;
+export type GuildSchema  = InferSchemaType<typeof guildSchema>;
 export type MemberSchema = InferSchemaType<typeof memberSchema>;
 export type ModlogSchema = InferSchemaType<typeof modlogSchema>;

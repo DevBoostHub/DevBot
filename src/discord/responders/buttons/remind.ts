@@ -5,7 +5,7 @@ import { time } from "discord.js";
 import { z } from "zod";
 
 const schema = z.object({
-    date: z.transform(createDate),
+    date: z.string().transform(val => createDate(new Date(val))),
 });
 createResponder({
     customId: "remind/:date",
